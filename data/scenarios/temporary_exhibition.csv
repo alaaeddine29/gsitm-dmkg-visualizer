@@ -1,0 +1,2 @@
+scenario,exhibition,state,room,time_start,time_end,poi_ids
+temporary_exhibition,E1,E1S1,R8,13:00,15:00,P4;P5;P6

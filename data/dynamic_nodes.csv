@@ -1,0 +1,10 @@
+id,label,node_type,dimension,entity_id,x,y,time_start,time_end,status,scenario
+P1S1,P1@t0,V_seq,poi,P1,0.405,0.420,0,1,displayed_in_R3,artwork_relocation
+P1S2,P1@t1,V_seq,poi,P1,0.355,0.705,1,2,displayed_in_R7,artwork_relocation
+R5S1,R5 open,V_seq,spatial,R5,0.405,0.515,0,2,open,room_closure
+R5S2,R5 closed,V_seq,spatial,R5,0.405,0.515,2,3,temporarily_closed,room_closure
+R5S3,R5 reopened,V_seq,spatial,R5,0.405,0.515,3,6,open,room_closure
+E1S1,E1,V_seq,poi,E1,0.275,0.705,4,5,active,temporary_exhibition
+TP4S1,P4 temporary,V_seq,poi,TP4,0.245,0.690,4,5,active,temporary_exhibition
+TP5S1,P5 temporary,V_seq,poi,TP5,0.275,0.675,4,5,active,temporary_exhibition
+TP6S1,P6 temporary,V_seq,poi,TP6,0.305,0.690,4,5,active,temporary_exhibition

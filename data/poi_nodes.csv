@@ -1,0 +1,29 @@
+id,label,name,node_type,dimension,x,y
+P1,1,"Marble Statue of a Kouros, Kroisos",V_base,poi,0.115,0.690
+P2,2,"Marble Statue of a Kouros",V_base,poi,0.115,0.620
+P3,3,"Grave Stelai",V_base,poi,0.220,0.715
+P4,4,"Marble Statue of a Kouros, Aristodikos",V_base,poi,0.245,0.515
+P5,5,"Marble grave stele of hoplite Ariston",V_base,poi,0.335,0.595
+P6,6,"Marble base for a funerary kouros",V_base,poi,0.350,0.700
+P7,7,"Kouroi",V_base,poi,0.440,0.665
+P8,8,"Statue of sleeping Maenad",V_base,poi,0.705,0.680
+P9,9,"Sculpture in the Roman period",V_base,poi,0.790,0.680
+P10,10,"Group of Aphrodite, Pan and Eros",V_base,poi,0.865,0.625
+P11,11,"Bronze portrait head",V_base,poi,0.955,0.620
+P12,12,"Statue of Poseidon",V_base,poi,0.865,0.550
+P13,13,"Hellenistic Sculpture",V_base,poi,0.935,0.525
+P14,14,"Colossal head of statue of Zeus",V_base,poi,1.035,0.550
+P15,15,"Portrait head from a Bronze statue of a philosopher",V_base,poi,0.820,0.400
+P16,16,"The group of cult statues in the temple of Despoina at Lykos",V_base,poi,0.985,0.490
+P17,17,"The group of cult statues",V_base,poi,0.955,0.370
+P18,18,"Head of Artemis",V_base,poi,1.070,0.400
+P19,19,"Fragment of Despoina's",V_base,poi,1.175,0.335
+P20,20,"Head of Anytos",V_base,poi,1.070,0.305
+P21,21,"Marble colossal head of Demeter",V_base,poi,1.115,0.105
+P22,22,"Bronze Statue of a horse and young jockey",V_base,poi,0.975,0.235
+P23,23,"Bronze Statue of Poseidon",V_base,poi,0.275,0.385
+P24,24,"Marble Votive relief",V_base,poi,0.275,0.090
+P25,25,"Access for visitors with disabilities",V_base,poi,0.365,0.260
+P26,26,"Marble statue of victorious athlete, Diadoumenos",V_base,poi,0.655,0.245
+P27,27,"Marble Votive relief",V_base,poi,0.685,0.140
+P28,28,"Marble grave stele of Hegeso",V_base,poi,0.365,0.155

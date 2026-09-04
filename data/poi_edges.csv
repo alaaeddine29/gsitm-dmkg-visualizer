@@ -1,0 +1,15 @@
+id,source,target,edge_type,relation
+PE01,P1,P2,E_rel,same_artifact_class_as
+PE02,P2,P4,E_rel,same_artifact_class_as
+PE03,P4,P5,E_rel,same_material_as
+PE04,P5,P6,E_rel,same_material_as
+PE05,P24,P28,E_rel,same_artifact_class_as
+PE06,P28,P27,E_rel,same_material_as
+PE07,P27,P26,E_rel,same_material_as
+PE08,P26,P25,E_rel,same_material_as
+PE09,P23,P22,E_rel,same_artifact_class_as
+PE10,P22,P21,E_rel,same_function_as
+PE11,P15,P16,E_rel,same_material_as
+PE12,P16,P17,E_rel,same_artifact_class_as
+PE13,P17,P18,E_rel,same_material_as
+PE14,P18,P20,E_rel,same_material_as

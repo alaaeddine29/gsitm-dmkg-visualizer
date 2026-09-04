@@ -1,0 +1,2 @@
+scenario,entity,state,time_start,time_end,status
+room_closure,R5,R5C1,12:00,14:00,closed
