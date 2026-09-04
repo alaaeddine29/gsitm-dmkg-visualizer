@@ -416,7 +416,11 @@ G-SITM-Visualizer/
 
 ### Requirements
 
-Python **3.10 or later** is recommended.
+- Python **3.10 or later** is recommended.
+- Dash 4.4.1
+- Plotly 7.0.0
+- pandas 3.0.5
+- Pillow 12.3.0
 
 Clone the repository:
 
