@@ -342,6 +342,15 @@ print(
 #
 # Expected columns:
 # scenario,entity,state,time_start,time_end,status
+#
+# G-SITM representation:
+#   R5      = V_base : persistent room identity
+#   R5S1    = V_seq  : temporally valid state affected by the update
+#   R5C1    = V_diff : localized temporary closure update
+#
+# Relations:
+#   R5S1 --InstanceOf--> R5
+#   R5C1 --E_diff------> R5S1
 # =========================================================
 
 ROOM_CLOSURE_FILE = SCENARIO_DIR / "room_closure.csv"
@@ -406,59 +415,119 @@ else:
     )
 
 
-room_closure_node_rows = []
+# ---------------------------------------------------------
+# Build Scenario 2 V_seq and V_diff nodes.
+# ---------------------------------------------------------
+
+room_closure_state_rows = []
+room_closure_diff_rows = []
 
 for index, row in room_closure.reset_index(drop=True).iterrows():
-
-    room_id = row["entity"]
+    room_id = str(row["entity"]).strip()
 
     if room_id not in spatial_lookup.index:
         raise ValueError(
-            f"Room closure scenario references unknown room "
+            "Room closure scenario references unknown room "
             f"'{room_id}'."
         )
 
     room_node = spatial_lookup.loc[room_id]
+    room_x = float(room_node["x"])
+    room_y = float(room_node["y"])
 
-    room_closure_node_rows.append(
+    # One V_seq state is introduced for the state affected by the
+    # differential closure update. The suffix S1 is scenario-local.
+    affected_state_id = f"{room_id}S1"
+
+    room_closure_state_rows.append(
+        {
+            "id": affected_state_id,
+            "label": affected_state_id,
+            "name": f"{room_id} temporally valid state",
+            "node_type": "V_seq",
+            "dimension": "spatial",
+            "entity_id": room_id,
+            "status": "state affected by closure",
+            "time_start": row["time_start"],
+            "time_end": row["time_end"],
+            "start_min": int(row["start_min"]),
+            "end_min": int(row["end_min"]),
+            # Visualization-only offset.
+            "x": room_x - 0.030,
+            "y": room_y - 0.030
+        }
+    )
+
+    room_closure_diff_rows.append(
         {
             "id": row["state"],
             "label": row["state"],
-            "name": f"{room_id} temporary closure",
+            "name": f"{room_id} temporary closure update",
             "node_type": "V_diff",
             "dimension": "spatial",
             "entity_id": room_id,
+            "affected_state": affected_state_id,
             "status": row["status"],
             "time_start": row["time_start"],
             "time_end": row["time_end"],
             "start_min": int(row["start_min"]),
             "end_min": int(row["end_min"]),
-            "x": float(room_node["x"]) + 0.030,
-            "y": float(room_node["y"]) - 0.030
+            # Visualization-only offset.
+            "x": room_x + 0.030,
+            "y": room_y - 0.030
         }
     )
 
-room_closure_nodes = pd.DataFrame(room_closure_node_rows)
+room_closure_state_nodes = pd.DataFrame(room_closure_state_rows)
+room_closure_nodes = pd.DataFrame(room_closure_diff_rows)
+
+if not room_closure_state_nodes.empty:
+    room_closure_state_nodes["plot_x"] = room_closure_state_nodes["x"] * width
+    room_closure_state_nodes["plot_y"] = room_closure_state_nodes["y"] * height
+    room_closure_state_lookup = room_closure_state_nodes.set_index("id")
+else:
+    room_closure_state_lookup = pd.DataFrame()
 
 if not room_closure_nodes.empty:
-    room_closure_nodes["plot_x"] = (
-        room_closure_nodes["x"] * width
-    )
-    room_closure_nodes["plot_y"] = (
-        room_closure_nodes["y"] * height
-    )
-    room_closure_lookup = (
-        room_closure_nodes.set_index("id")
-    )
+    room_closure_nodes["plot_x"] = room_closure_nodes["x"] * width
+    room_closure_nodes["plot_y"] = room_closure_nodes["y"] * height
+    room_closure_lookup = room_closure_nodes.set_index("id")
 else:
     room_closure_lookup = pd.DataFrame()
+
+
+# ---------------------------------------------------------
+# E_rel — affected V_seq -> persistent V_base (InstanceOf)
+# ---------------------------------------------------------
+
+room_closure_rel_edges = pd.DataFrame(
+    [
+        {
+            "id": f"S2R{i+1:02d}",
+            "source": f"{row['entity']}S1",
+            "target": row["entity"],
+            "edge_type": "E_rel",
+            "relation": "InstanceOf",
+            "time_start": row["time_start"],
+            "time_end": row["time_end"]
+        }
+        for i, (_, row) in enumerate(
+            room_closure.reset_index(drop=True).iterrows()
+        )
+    ]
+)
+
+
+# ---------------------------------------------------------
+# E_diff — V_diff -> affected V_seq
+# ---------------------------------------------------------
 
 room_closure_edges = pd.DataFrame(
     [
         {
             "id": f"S2D{i+1:02d}",
             "source": row["state"],
-            "target": row["entity"],
+            "target": f"{row['entity']}S1",
             "edge_type": "E_diff",
             "relation": "temporarily_closes",
             "time_start": row["time_start"],
@@ -469,6 +538,21 @@ room_closure_edges = pd.DataFrame(
         )
     ]
 )
+
+print("\nROOM CLOSURE SCENARIO")
+if not room_closure.empty:
+    print(
+        room_closure[
+            [
+                "scenario",
+                "entity",
+                "state",
+                "time_start",
+                "time_end",
+                "status"
+            ]
+        ]
+    )
 
 
 # =========================================================
@@ -680,7 +764,7 @@ for i, (_, row) in enumerate(
             {
                 "id": f"S3P{i+1:02d}_{j+1:02d}",
                 "source": poi_id,
-                "target": state_id,
+                "target": exhibition_id,
                 "edge_type": "E_rel",
                 "relation": "part_of",
                 "time_start": row["time_start"],
@@ -1555,83 +1639,201 @@ def build_figure(
     # =====================================================
     # SCENARIO 2 — TEMPORARY ROOM CLOSURE
     # =====================================================
+    #
+    # R5S1 (V_seq) --InstanceOf--> R5 (V_base)
+    # R5C1 (V_diff) --E_diff-----> R5S1 (V_seq)
+    # =====================================================
 
     if selected_scenario == "room_closure":
 
-        if time_mode == "all":
-            closure_visible_nodes = (
-                room_closure_nodes.copy()
-            )
-        else:
-            active_closures = active_room_closure_rows(
-                selected_time
-            )
+        # -------------------------------------------------
+        # Determine visible V_seq and V_diff nodes.
+        # -------------------------------------------------
 
-            active_closure_ids = set(
+        if time_mode == "all":
+            closure_visible_diff_nodes = room_closure_nodes.copy()
+            closure_visible_state_nodes = room_closure_state_nodes.copy()
+        else:
+            active_closures = active_room_closure_rows(selected_time)
+
+            active_diff_ids = set(
                 active_closures["state"].astype(str)
             )
 
-            closure_visible_nodes = (
-                room_closure_nodes[
+            active_state_ids = set(
+                active_closures["entity"].astype(str) + "S1"
+            )
+
+            if not room_closure_nodes.empty:
+                closure_visible_diff_nodes = room_closure_nodes[
                     room_closure_nodes["id"]
                     .astype(str)
-                    .isin(active_closure_ids)
+                    .isin(active_diff_ids)
                 ].copy()
-                if not room_closure_nodes.empty
-                else room_closure_nodes.copy()
-            )
+            else:
+                closure_visible_diff_nodes = room_closure_nodes.copy()
 
+            if not room_closure_state_nodes.empty:
+                closure_visible_state_nodes = room_closure_state_nodes[
+                    room_closure_state_nodes["id"]
+                    .astype(str)
+                    .isin(active_state_ids)
+                ].copy()
+            else:
+                closure_visible_state_nodes = room_closure_state_nodes.copy()
+
+        # Respect the global node-type selector.
         if "V_diff" not in selected_node_types:
-            closure_visible_nodes = (
-                closure_visible_nodes.iloc[0:0].copy()
+            closure_visible_diff_nodes = (
+                closure_visible_diff_nodes.iloc[0:0].copy()
             )
 
-        closure_visible_ids = set(
-            closure_visible_nodes["id"].astype(str)
-        ) if not closure_visible_nodes.empty else set()
+        if "V_seq" not in selected_node_types:
+            closure_visible_state_nodes = (
+                closure_visible_state_nodes.iloc[0:0].copy()
+            )
 
-        # E_diff: closure update -> persistent room.
+        closure_visible_diff_ids = (
+            set(closure_visible_diff_nodes["id"].astype(str))
+            if not closure_visible_diff_nodes.empty
+            else set()
+        )
+
+        closure_visible_state_ids = (
+            set(closure_visible_state_nodes["id"].astype(str))
+            if not closure_visible_state_nodes.empty
+            else set()
+        )
+
+        # -------------------------------------------------
+        # E_rel : affected V_seq -> V_base (InstanceOf)
+        # -------------------------------------------------
+
         if (
             "spatial" in selected_dimensions
-            and "E_diff" in selected_relations
-            and not room_closure_edges.empty
+            and "E_rel" in selected_relations
+            and "V_seq" in selected_node_types
+            and "V_base" in selected_node_types
+            and not room_closure_rel_edges.empty
         ):
-
-            for _, edge in room_closure_edges.iterrows():
-
+            for _, edge in room_closure_rel_edges.iterrows():
                 source = str(edge["source"])
                 target = str(edge["target"])
 
-                if source not in closure_visible_ids:
+                if source not in closure_visible_state_ids:
                     continue
 
                 if (
-                    source in room_closure_lookup.index
+                    source in room_closure_state_lookup.index
                     and target in spatial_lookup.index
                 ):
                     add_edge_with_hover(
                         fig=fig,
-                        source_node=(
-                            room_closure_lookup.loc[source]
-                        ),
-                        target_node=(
-                            spatial_lookup.loc[target]
-                        ),
+                        source_node=room_closure_state_lookup.loc[source],
+                        target_node=spatial_lookup.loc[target],
+                        edge=edge,
+                        color="#5277B8",
+                        width=2,
+                        dash="dot"
+                    )
+
+        # -------------------------------------------------
+        # E_diff : V_diff -> affected V_seq
+        # -------------------------------------------------
+
+        if (
+            "spatial" in selected_dimensions
+            and "E_diff" in selected_relations
+            and "V_diff" in selected_node_types
+            and "V_seq" in selected_node_types
+            and not room_closure_edges.empty
+        ):
+            for _, edge in room_closure_edges.iterrows():
+                source = str(edge["source"])
+                target = str(edge["target"])
+
+                if source not in closure_visible_diff_ids:
+                    continue
+
+                if target not in closure_visible_state_ids:
+                    continue
+
+                if (
+                    source in room_closure_lookup.index
+                    and target in room_closure_state_lookup.index
+                ):
+                    add_edge_with_hover(
+                        fig=fig,
+                        source_node=room_closure_lookup.loc[source],
+                        target_node=room_closure_state_lookup.loc[target],
                         edge=edge,
                         color="red",
                         width=3,
                         dash="solid"
                     )
 
+        # -------------------------------------------------
+        # Draw affected V_seq room state.
+        # -------------------------------------------------
+
         if (
             "spatial" in selected_dimensions
-            and not closure_visible_nodes.empty
+            and "V_seq" in selected_node_types
+            and not closure_visible_state_nodes.empty
         ):
-
             fig.add_trace(
                 go.Scatter(
-                    x=closure_visible_nodes["plot_x"],
-                    y=closure_visible_nodes["plot_y"],
+                    x=closure_visible_state_nodes["plot_x"],
+                    y=closure_visible_state_nodes["plot_y"],
+                    mode="markers+text",
+                    marker=dict(
+                        size=30,
+                        color="#9DC3E6",
+                        line=dict(
+                            color="#4472C4",
+                            width=2
+                        )
+                    ),
+                    text=closure_visible_state_nodes["label"],
+                    textposition="top center",
+                    textfont=dict(
+                        size=9,
+                        color="black"
+                    ),
+                    name="Spatial V_seq — Affected room state",
+                    customdata=closure_visible_state_nodes[
+                        [
+                            "id",
+                            "entity_id",
+                            "time_start",
+                            "time_end",
+                            "node_type"
+                        ]
+                    ].values,
+                    hovertemplate=(
+                        "<b>Room temporal state</b><br>"
+                        "ID: %{customdata[0]}<br>"
+                        "Persistent room: %{customdata[1]}<br>"
+                        "Validity: [%{customdata[2]}, %{customdata[3]})<br>"
+                        "Node type: %{customdata[4]}"
+                        "<extra></extra>"
+                    )
+                )
+            )
+
+        # -------------------------------------------------
+        # Draw V_diff temporary closure update.
+        # -------------------------------------------------
+
+        if (
+            "spatial" in selected_dimensions
+            and "V_diff" in selected_node_types
+            and not closure_visible_diff_nodes.empty
+        ):
+            fig.add_trace(
+                go.Scatter(
+                    x=closure_visible_diff_nodes["plot_x"],
+                    y=closure_visible_diff_nodes["plot_y"],
                     mode="markers+text",
                     marker=dict(
                         size=32,
@@ -1641,29 +1843,32 @@ def build_figure(
                             width=2
                         )
                     ),
-                    text=closure_visible_nodes["label"],
+                    text=closure_visible_diff_nodes["label"],
                     textposition="top center",
                     textfont=dict(
                         size=9,
                         color="black"
                     ),
-                    name="V_diff — Room closure",
-                    customdata=closure_visible_nodes[
+                    name="Spatial V_diff — Room closure",
+                    customdata=closure_visible_diff_nodes[
                         [
                             "id",
                             "entity_id",
+                            "affected_state",
                             "status",
                             "time_start",
-                            "time_end"
+                            "time_end",
+                            "node_type"
                         ]
                     ].values,
                     hovertemplate=(
-                        "<b>Temporary room closure</b><br>"
+                        "<b>Temporary room closure update</b><br>"
                         "ID: %{customdata[0]}<br>"
-                        "Room: %{customdata[1]}<br>"
-                        "Status: %{customdata[2]}<br>"
-                        "Validity: "
-                        "[%{customdata[3]}, %{customdata[4]})"
+                        "Persistent room: %{customdata[1]}<br>"
+                        "Affected V_seq: %{customdata[2]}<br>"
+                        "Update: %{customdata[3]}<br>"
+                        "Validity: [%{customdata[4]}, %{customdata[5]})<br>"
+                        "Node type: %{customdata[6]}"
                         "<extra></extra>"
                     )
                 )
