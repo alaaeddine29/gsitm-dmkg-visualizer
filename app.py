@@ -350,7 +350,7 @@ print(
 #
 # Relations:
 #   R5S1 --InstanceOf--> R5
-#   R5C1 --E_diff------> R5S1
+#   R5S1 --records (E_diff)--> R5C1
 # =========================================================
 
 ROOM_CLOSURE_FILE = SCENARIO_DIR / "room_closure.csv"
@@ -519,17 +519,17 @@ room_closure_rel_edges = pd.DataFrame(
 
 
 # ---------------------------------------------------------
-# E_diff — V_diff -> affected V_seq
+# E_diff — affected V_seq -> V_diff
 # ---------------------------------------------------------
 
 room_closure_edges = pd.DataFrame(
     [
         {
             "id": f"S2D{i+1:02d}",
-            "source": row["state"],
-            "target": f"{row['entity']}S1",
+            "source": f"{row['entity']}S1",
+            "target": row["state"],
             "edge_type": "E_diff",
-            "relation": "temporarily_closes",
+            "relation": "records",
             "time_start": row["time_start"],
             "time_end": row["time_end"]
         }
@@ -1641,7 +1641,7 @@ def build_figure(
     # =====================================================
     #
     # R5S1 (V_seq) --InstanceOf--> R5 (V_base)
-    # R5C1 (V_diff) --E_diff-----> R5S1 (V_seq)
+    # R5S1 (V_seq) --records (E_diff)--> R5C1 (V_diff)
     # =====================================================
 
     if selected_scenario == "room_closure":
@@ -1738,7 +1738,7 @@ def build_figure(
                     )
 
         # -------------------------------------------------
-        # E_diff : V_diff -> affected V_seq
+        # E_diff : affected V_seq -> V_diff
         # -------------------------------------------------
 
         if (
@@ -1749,23 +1749,23 @@ def build_figure(
             and not room_closure_edges.empty
         ):
             for _, edge in room_closure_edges.iterrows():
-                source = str(edge["source"])
-                target = str(edge["target"])
+                source = str(edge["source"])  # V_seq
+                target = str(edge["target"])  # V_diff
 
-                if source not in closure_visible_diff_ids:
+                if source not in closure_visible_state_ids:
                     continue
 
-                if target not in closure_visible_state_ids:
+                if target not in closure_visible_diff_ids:
                     continue
 
                 if (
-                    source in room_closure_lookup.index
-                    and target in room_closure_state_lookup.index
+                    source in room_closure_state_lookup.index
+                    and target in room_closure_lookup.index
                 ):
                     add_edge_with_hover(
                         fig=fig,
-                        source_node=room_closure_lookup.loc[source],
-                        target_node=room_closure_state_lookup.loc[target],
+                        source_node=room_closure_state_lookup.loc[source],
+                        target_node=room_closure_lookup.loc[target],
                         edge=edge,
                         color="red",
                         width=3,
@@ -2750,16 +2750,35 @@ def build_figure(
 # REPRESENTATIONAL VALIDATION / COMPETENCY QUESTIONS
 # =========================================================
 
+def _interval_overlap(a_start, a_end, b_start, b_end):
+    """Return True iff half-open intervals [a_start,a_end) and [b_start,b_end) overlap."""
+    if None in (a_start, a_end, b_start, b_end):
+        return False
+    return max(int(a_start), int(b_start)) < min(int(a_end), int(b_end))
+
+
+def _node_interval_minutes(row):
+    """Extract [start,end) minutes from a row containing time_start/time_end."""
+    start = time_to_minutes(row.get("time_start", None))
+    end = time_to_minutes(row.get("time_end", None))
+    return start, end
+
+
 def visitor_states_in_room(room_id, selected_time=None):
-    """Synthetic visitor observations associated with one room."""
+    """Synthetic visitor V_seq observations associated with one room."""
     rows = mo_nodes[
         (mo_nodes["node_type"] == "V_seq")
         &
         (mo_nodes["room_id"].astype(str) == str(room_id))
     ].copy()
 
-    if selected_time is not None and not rows.empty:
-        rows["_start_min"] = rows["time_start"].apply(time_to_minutes)
+    if rows.empty:
+        return rows
+
+    rows["_start_min"] = rows["time_start"].apply(time_to_minutes)
+    rows["_end_min"] = rows["time_end"].apply(time_to_minutes)
+
+    if selected_time is not None:
         rows = rows[
             rows["_start_min"].notna()
             &
@@ -2769,9 +2788,47 @@ def visitor_states_in_room(room_id, selected_time=None):
     return rows
 
 
+def visitor_states_overlapping_room_interval(room_id, interval_start, interval_end):
+    """Return visitor V_seq observations in room_id overlapping [interval_start, interval_end)."""
+    rows = visitor_states_in_room(room_id)
+    if rows.empty:
+        return rows
+
+    mask = rows.apply(
+        lambda r: _interval_overlap(
+            r["_start_min"],
+            r["_end_min"],
+            interval_start,
+            interval_end,
+        ),
+        axis=1,
+    )
+    return rows[mask].copy()
+
+
+def visitor_states_overlapping_interval(interval_start, interval_end):
+    """Return all visitor V_seq observations overlapping [interval_start, interval_end)."""
+    rows = mo_nodes[mo_nodes["node_type"] == "V_seq"].copy()
+    if rows.empty:
+        return rows
+
+    rows["_start_min"] = rows["time_start"].apply(time_to_minutes)
+    rows["_end_min"] = rows["time_end"].apply(time_to_minutes)
+    mask = rows.apply(
+        lambda r: _interval_overlap(
+            r["_start_min"],
+            r["_end_min"],
+            interval_start,
+            interval_end,
+        ),
+        axis=1,
+    )
+    return rows[mask].copy()
+
+
 def build_validation_content(selected_scenario, selected_time, time_mode):
     """
-    Produce representational validation results for the paper's scenarios.
+    Produce representational validation results for the paper's final CQ1-CQ6.
     This is not a performance, scalability, predictive-accuracy, or
     empirical visitor-behaviour evaluation.
     """
@@ -2805,18 +2862,12 @@ def build_validation_content(selected_scenario, selected_time, time_mode):
                 [
                     html.H4(
                         "Baseline configuration",
-                        style={
-                            "margin": "0 0 6px 0",
-                            "fontSize": "15px"
-                        }
+                        style={"margin": "0 0 6px 0", "fontSize": "15px"}
                     ),
                     html.P(
                         "Spatial entities, POIs and synthetic visitor observations "
                         "are integrated without applying a controlled dynamic event.",
-                        style={
-                            "margin": "0",
-                            "color": "#333333"
-                        }
+                        style={"margin": "0", "color": "#333333"}
                     )
                 ],
                 style={
@@ -2830,7 +2881,7 @@ def build_validation_content(selected_scenario, selected_time, time_mode):
         ]
 
     if selected_scenario == "artwork_relocation":
-        ordered = scenario1_nodes.sort_values("start_min")
+        ordered = scenario1_nodes.sort_values("start_min").copy()
         active = ordered[
             (ordered["start_min"] <= selected_time)
             &
@@ -2847,26 +2898,28 @@ def build_validation_content(selected_scenario, selected_time, time_mode):
             )
 
         temporal_locations = "; ".join(
-            f"{row['id']} → {row['room_id']} "
+            f"{row['entity_id']} via {row['id']} → {row['room_id']} "
             f"[{row['time_start']}, {row['time_end']})"
             for _, row in ordered.iterrows()
         )
 
         visitor_hits = []
-        for room_id in ordered["room_id"].astype(str).unique():
-            rows = visitor_states_in_room(
-                room_id,
-                selected_time if time_mode == "history" else None
+        for _, arow in ordered.iterrows():
+            rows = visitor_states_overlapping_room_interval(
+                arow["room_id"],
+                int(arow["start_min"]),
+                int(arow["end_min"]),
             )
             for _, s in rows.iterrows():
                 visitor_hits.append(
-                    f"{s['visitor_id']}:{s['id']} in {room_id}"
+                    f"{s['visitor_id']}:{s['id']} in {arow['room_id']} "
+                    f"while {arow['id']} is valid"
                 )
 
-        cq3 = (
+        cq2 = (
             ", ".join(visitor_hits)
             if visitor_hits
-            else "No matching synthetic visitor observation in the current dataset."
+            else "No synthetic visitor observation temporally overlaps the relocated artwork's valid room intervals."
         )
 
         return [
@@ -2878,23 +2931,19 @@ def build_validation_content(selected_scenario, selected_time, time_mode):
                 "successive states; E_cross displayed_in carries temporal validity."
             ]),
             html.Div([
-                html.B("CQ1/CQ2 — "),
+                html.B("CQ1 — Cultural objects displayed in a room during an interval — "),
                 temporal_locations
             ], style={"marginTop": "6px"}),
             html.Div([
-                html.B("CQ3 — Visitor observations in old/new rooms — "),
-                cq3
+                html.B("CQ2 — Visitor trajectories in previous/new artwork locations — "),
+                cq2
             ], style={"marginTop": "6px"}),
             validation_note
         ]
 
     if selected_scenario == "room_closure":
         active = active_room_closure_rows(selected_time)
-        closed_rooms = (
-            list(active["entity"].astype(str))
-            if not active.empty
-            else []
-        )
+        closed_rooms = list(active["entity"].astype(str)) if not active.empty else []
 
         current = (
             f"At {t}, " + ", ".join(closed_rooms) + " is temporarily inaccessible."
@@ -2910,22 +2959,26 @@ def build_validation_content(selected_scenario, selected_time, time_mode):
                 invalid_edges.append(f"{e['id']} ({s}–{tg})")
 
         impacted_visitor_states = []
-        for room_id in closed_rooms:
-            rows = visitor_states_in_room(room_id, selected_time)
+        for _, crow in active.iterrows():
+            c_start = int(crow["start_min"])
+            c_end = int(crow["end_min"])
+            room_id = str(crow["entity"])
+            rows = visitor_states_overlapping_room_interval(room_id, c_start, c_end)
             for _, s in rows.iterrows():
                 impacted_visitor_states.append(
-                    f"{s['visitor_id']}:{s['id']}"
+                    f"{s['visitor_id']}:{s['id']} overlaps {room_id} closure "
+                    f"[{crow['time_start']}, {crow['time_end']})"
                 )
 
-        cq4 = (
+        cq3 = (
             ", ".join(invalid_edges)
             if invalid_edges
             else "No connectivity relation is invalidated at the selected time."
         )
-        cq5 = (
+        cq4 = (
             ", ".join(impacted_visitor_states)
             if impacted_visitor_states
-            else "No synthetic visitor observation crosses the closed room up to this time."
+            else "No synthetic visitor trajectory observation overlaps the active closure interval in the affected room."
         )
 
         return [
@@ -2933,17 +2986,17 @@ def build_validation_content(selected_scenario, selected_time, time_mode):
             html.P(current, style={"margin": "0 0 7px 0"}),
             html.Div([
                 html.B("G-SITM encoding — "),
-                "R5 remains V_base; the temporary closure is V_diff; E_diff "
-                "associates the update with R5; connectivity involving R5 is "
-                "invalid while the closure interval is active."
+                "R5 remains V_base; R5S1 is the affected V_seq; the temporary closure is V_diff; "
+                "E_diff is directed from R5S1 to R5C1 with relation records; connectivity involving "
+                "R5 is invalid while the closure interval is active."
             ]),
             html.Div([
-                html.B("CQ4 — Invalid accessibility/connectivity — "),
-                cq4
+                html.B("CQ3 — Inaccessible rooms/connectivity during an interval — "),
+                cq3
             ], style={"marginTop": "6px"}),
             html.Div([
-                html.B("CQ5 — Affected synthetic visitor observations — "),
-                cq5
+                html.B("CQ4 — Trajectories crossing/avoiding the affected area during closure — "),
+                cq4
             ], style={"marginTop": "6px"}),
             validation_note
         ]
@@ -2953,27 +3006,36 @@ def build_validation_content(selected_scenario, selected_time, time_mode):
 
         if active.empty:
             current = f"At {t}, no temporary exhibition is active."
-            cq6 = "No temporary exhibition/POI configuration is valid."
-            cq7 = "No E1-specific change with respect to the baseline configuration."
+            cq5 = "No temporary exhibition/POI configuration is valid at the selected time."
+            cq6 = "No E1-specific change with respect to the baseline configuration at the selected time."
         else:
             row = active.iloc[0]
-            pois = [
-                p.strip()
-                for p in str(row["poi_ids"]).split(";")
-                if p.strip()
-            ]
+            pois = [p.strip() for p in str(row["poi_ids"]).split(";") if p.strip()]
             current = (
                 f"At {t}, {row['exhibition']} is active in {row['room']} "
                 f"during [{row['time_start']}, {row['time_end']})."
             )
-            cq6 = (
-                f"{row['exhibition']} and POIs {', '.join(pois)} are active "
-                f"in {row['room']}."
+
+            visitors = visitor_states_overlapping_interval(
+                int(row["start_min"]),
+                int(row["end_min"]),
             )
-            cq7 = (
-                f"The valid configuration adds state {row['state']}, "
-                f"part_of relations for {', '.join(pois)}, and temporally "
-                f"qualified displayed_in relations to {row['room']}."
+            if visitors.empty:
+                overlap_text = "No synthetic visitor trajectory overlaps this exhibition interval."
+            else:
+                overlap_text = ", ".join(
+                    f"{s['visitor_id']}:{s['id']}"
+                    for _, s in visitors.iterrows()
+                )
+
+            cq5 = (
+                f"{row['exhibition']} and POIs {', '.join(pois)} are active in {row['room']} "
+                f"during [{row['time_start']}, {row['time_end']}); {overlap_text}"
+            )
+            cq6 = (
+                f"Compared with the baseline, the valid configuration adds state {row['state']}, "
+                f"part_of relations for {', '.join(pois)}, and temporally qualified displayed_in "
+                f"relations to {row['room']}."
             )
 
         return [
@@ -2985,12 +3047,12 @@ def build_validation_content(selected_scenario, selected_time, time_mode):
                 "displayed_in is E_cross; scenario relations carry [start,end) validity."
             ]),
             html.Div([
-                html.B("CQ6 — Active exhibition and POIs — "),
-                cq6
+                html.B("CQ5 — Temporary exhibitions/POIs active during a visitor trajectory — "),
+                cq5
             ], style={"marginTop": "6px"}),
             html.Div([
-                html.B("CQ7 — Configuration difference — "),
-                cq7
+                html.B("CQ6 — Valid museum configuration before/after a dynamic event — "),
+                cq6
             ], style={"marginTop": "6px"}),
             validation_note
         ]
