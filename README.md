@@ -43,8 +43,8 @@ The demonstrator follows the G-SITM distinction between persistent entities, tem
 |---|---|---|
 | `E_rel` | Structural or semantic relation | `connected_to`, `InstanceOf`, `part_of` |
 | `E_cross` | Relation across dimensions | `displayed_in`, `located_in` |
-| `E_evol` | Temporal continuity between successive states | `evolves_to` |
-| `E_diff` | Relation involving a differential update | `temporarily_closes` |
+| `E_evol` | Temporal continuity or genealogical evolution between sequential states | `evolves_to` |
+| `E_diff` | Directed relation from an affected sequential state to a differential update | `records` |
 
 The visualizer follows a consistent graphical convention:
 
@@ -52,13 +52,13 @@ The visualizer follows a consistent graphical convention:
 - `V_seq`: blue nodes;
 - `V_diff`: violet nodes;
 - `E_evol`: green directed edges;
-- `E_diff`: red edges.
+- `E_diff`: red directed edges.
 
 ---
 
 ## 3. Museum Dimensions
 
-The current prototype integrates three principal dimensions.
+The current prototype explicitly instantiates three principal dimensions.
 
 ### Spatial Dimension (`D_space`)
 
@@ -96,12 +96,24 @@ Represents museum visitors as persistent moving objects and their successive obs
 For example:
 
 ```text
-Visitor 1
-   |
-   | InstanceOf
-   |
-V1S1 --> V1S2 --> V1S3 --> V1S4
-          E_evol
+                 Visitor 1
+                  V_base
+                    |
+              InstanceOf
+                    |
+                   V1S1
+                    |
+                 E_evol
+                    v
+                   V1S2
+                    |
+                 E_evol
+                    v
+                   V1S3
+                    |
+                 E_evol
+                    v
+                   V1S4
 ```
 
 Each `V_seq` observation can additionally be connected to the corresponding museum room through an `E_cross` relation.
@@ -173,7 +185,7 @@ The persistent identity is preserved:
               P1
             V_base
            /      \
- InstanceOf      InstanceOf
+   InstanceOf    InstanceOf
        /            \
     P1S1  ------->  P1S2
     V_seq  E_evol   V_seq
@@ -215,31 +227,51 @@ The room remains represented by its persistent node:
 R5 : V_base
 ```
 
-The temporary closure is represented as a differential update:
+The affected temporally valid room state is represented by:
+
+```text
+R5S1 : V_seq
+```
+
+The temporary closure is represented as an interval-based differential update:
 
 ```text
 R5C1 : V_diff
+temporal extent = [12:00, 14:00)
+accessibility = closed
 ```
 
-connected to the affected room through:
+The affected sequential state records the differential update through a directed `E_diff` relation:
 
 ```text
-R5C1 --E_diff / temporarily_closes--> R5
+R5S1 --records (E_diff)--> R5C1
+V_seq                      V_diff
 ```
 
-During the interval:
+Thus, `E_diff` follows the direction:
+
+```text
+V_seq --> V_diff
+```
+
+The temporal extent of the closure is carried by the differential node itself. The differential update is therefore associated with the temporally valid sequential state affected by the change without requiring the creation of a complete new sequential state.
+
+During:
 
 ```text
 12:00 <= T < 14:00
 ```
 
-the room is considered temporarily inaccessible and connectivity involving the closed room is excluded from the valid selected-time configuration.
+room `R5` is considered temporarily inaccessible and connectivity relations providing access to the closed room are excluded from the valid selected-time configuration.
+
+After the interval ends, the temporary differential update is no longer active and the accessibility relations are restored according to the museum configuration valid after the event.
 
 The scenario demonstrates:
 
 - preservation of room identity;
-- representation of a localized temporary change;
+- representation of a localized interval-based temporary update;
 - temporal accessibility;
+- temporal validity of connectivity relations;
 - reconstruction of the valid indoor connectivity graph.
 
 Example:
@@ -319,7 +351,7 @@ These scenario-specific relations are temporally valid during:
 [13:00, 15:00)
 ```
 
-The scenario demonstrates the representation of a temporary semantic and spatial museum configuration.
+The scenario demonstrates the representation of a temporary semantic and spatial museum configuration while preserving the persistent identities of the represented entities.
 
 ---
 
@@ -347,6 +379,8 @@ Competency-Question Result
 
 The objective is to determine whether G-SITM can represent and reconstruct representative museum dynamics while preserving entity identity, temporal validity, and semantic relationships.
 
+The prototype operationalizes the competency questions through scenario-specific temporal reconstruction and inspection of the graph elements required to answer them. It is not intended as a declarative graph-query engine or performance benchmark.
+
 ---
 
 ## 9. Competency Questions
@@ -355,17 +389,23 @@ The proof of concept considers the following competency questions.
 
 **CQ1.** Which cultural objects were displayed in a given room during a specified time interval?
 
-**CQ2.** In which rooms was a given artwork displayed before and after its relocation?
+**CQ2.** Which visitor trajectories occurred in the previous and new locations of a relocated artwork?
 
-**CQ3.** Which visitor trajectories occurred in the previous and new locations of a relocated artwork?
+**CQ3.** Which rooms and connectivity relations were inaccessible during a specified interval?
 
-**CQ4.** Which rooms and connectivity relations were inaccessible during a specified period?
+**CQ4.** Which trajectories crossed or avoided the affected area during a room closure?
 
-**CQ5.** Which trajectories crossed or avoided the affected area during a room closure?
+**CQ5.** Which temporary exhibitions and POIs were active during a visitor trajectory?
 
-**CQ6.** Which temporary exhibitions and temporary POIs were active during a visitor's trajectory?
+**CQ6.** How did the valid museum configuration differ before and after a dynamic event?
 
-**CQ7.** How did the valid museum configuration differ before and after a dynamic event?
+The questions are associated with the controlled scenarios as follows:
+
+| Scenario | Competency Questions |
+|---|---|
+| Artwork relocation | CQ1–CQ2 |
+| Temporary room closure | CQ3–CQ4 |
+| Temporary exhibition | CQ5–CQ6 |
 
 These questions require joint access to temporal, spatial, cultural heritage, and moving-object information.
 
@@ -477,7 +517,7 @@ pandas
 pillow
 ```
 
-For a research release, dependency versions should eventually be pinned to the versions used for the final experiments.
+For a research release, dependency versions should eventually be pinned to the versions used for the final proof of concept.
 
 ---
 
@@ -584,7 +624,7 @@ Spatial co-location between a visitor and a POI does not by itself demonstrate t
 
 Therefore, visitor–POI interaction relations should only be interpreted as actual observations when supported by an appropriate source of evidence.
 
-In the current proof of concept, synthetic visitor trajectories primarily demonstrate the ability of the model to integrate moving-object observations with spatial and cultural heritage entities.
+In the current proof of concept, visitor–POI `observed` relations may be synthetically instantiated to illustrate how such interaction information can be represented when appropriate evidence is available. They should not be interpreted as measurements of visual attention or actual visitor engagement.
 
 ---
 
@@ -639,6 +679,8 @@ The current implementation does **not** evaluate:
 - recommendation quality;
 - real visitor behavior.
 
+The competency questions are operationalized through scenario-specific temporal reconstruction and inspection of the graph elements required to answer them. They are not currently implemented as declarative queries over an RDF or graph-database backend.
+
 These aspects require separate experimental protocols and datasets.
 
 ---
@@ -684,8 +726,8 @@ The final bibliographic information will be added after publication.
 
 ```bibtex
 @inproceedings{gsitm_dmkg_2026,
-  title  = {Building a Dynamic Museum Knowledge Graph from Heterogeneous Cultural Heritage Data Using G-SITM},
-  author = {Alaa Eddine Siouane and others},
+  title  = {A new Graph-based Semantic Indoor Trajectory Model for building a Dynamic Museum Knowledge Graph},
+  author = {Alaa Eddine Siouane and Claudia Marinica and Fabien Picarougne and Fabrice Guillet and Georgios Papaioannou},
   year   = {2026},
   note   = {Publication details to be updated}
 }
@@ -724,4 +766,4 @@ The National Archaeological Museum of Athens is used as the museum case study fo
 
 ## Disclaimer
 
-This repository is a scientific research prototype. The controlled dynamic scenarios and synthetic visitor trajectories are intended solely for model demonstration and representational validation.
+This repository is a scientific research prototype. The controlled dynamic scenarios and synthetic visitor trajectories are intended solely for model demonstration and representational validation. They should not be interpreted as documented historical events or empirical observations of visitor behavior.
